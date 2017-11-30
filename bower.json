@@ -1,0 +1,24 @@
+{
+  "name": "cpuload",
+  "main": "index.js",
+  "homepage": "https://github.com/hsuenaga/bits",
+  "authors": [
+    "SUENAGA Hiroki <hiroki_suenaga@mac.com>"
+  ],
+  "description": "CPU Load Application for BITS",
+  "keywords": [
+    "cpuload"
+  ],
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "app/bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "google-chart": "GoogleWebComponents/google-chart#^2.0.0"
+  }
+}

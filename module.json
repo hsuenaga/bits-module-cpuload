@@ -1,0 +1,21 @@
+{
+	"name": "cpuload",
+	"version": "1.0.0",
+	"dependencies": {
+		"bits-base": "^2.0.0"
+	},
+
+	"appDir": "app/",
+	"contentElement": "cpuload-app",
+	"contentImport": "/elements/cpuload-app/cpuload-app.html",
+
+	"scopes": [
+		{
+			"name": "public",
+			"displayName": "Public"
+		}
+	],
+	"displayName": "CPU Load",
+	"icon": "icons:favorite",
+	"category": "Tutorials"
+}

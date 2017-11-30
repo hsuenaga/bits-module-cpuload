@@ -1,0 +1,245 @@
+//
+// Client side
+//
+<link rel="import" href="../../bower_components/polymer/polymer.html">
+<link rel="import" href="../../bower_components/google-chart/google-chart.html">
+<link rel="import" href="../base-message-center/base-message-center.html">
+
+<dom-module id="cpuload-app">
+	<template>
+		<style>
+			:host {
+				height: 100%;
+				position: relative;
+				display: block;
+			}
+
+			.value {
+				text-align: right;
+			}
+
+			thead tr td {
+				border: 1px solid grey;
+				background: LightGrey;
+			}
+		</style>
+
+		<base-message-center id="messageCenter"></base-message-center>
+
+		<div id="scroller">
+			<h1>CPU Load</h1>
+			<p>TimeStamp: [[timeStamp]]</p>
+			<p>Status: [[statData]]</p>
+			<table>
+				<thead>
+					<tr>
+						<td>Type</td>
+						<td>Value [%]</td>
+						<td>Description</td>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>User</td>
+						<td class="value">[[user]]</td>
+						<td>User Process</td>
+					</tr>
+					<tr>
+						<td>System</td>
+						<td class="value">[[system]]</td>
+						<td>System Process</td>
+					</tr>
+					<tr>
+						<td>Idle</td>
+						<td class="value">[[idle]]</td>
+						<td>Idle Process</td>
+					</tr>
+					<tr>
+						<td>Wait</td>
+						<td class="value">[[wait]]</td>
+						<td>I/O and IRQ wait.</td>
+					</tr>
+					<tr>
+						<td>Steal</td>
+						<td class="value">[[steal]]</td>
+						<td>Other Virtual Machines(s) on same host</td>
+					</tr>
+					<tr>
+						<td>Guest</td>
+						<td class="value">[[guest]]</td>
+						<td>Guest Virtual Machines(s) on this host</td>
+					</tr>
+				</tbody>
+			</table>
+
+			<google-chart
+				type='pie'
+				options='{"title": "CPU Utilization"}'
+				data='[[_graphData]]'
+			</google-chart>
+
+		</div>
+	</template>
+
+	<script>
+		(() => {
+			'use strict';
+
+			Polymer({
+				is: 'cpuload-app',
+
+				publish: {
+				},
+
+				properties: {
+					timerId: {
+						type: Number,
+						value: undefined
+					},
+					timeStamp: {
+						type: String,
+						value: ""
+					},
+					interval: {
+						type: Number,
+						value: 1000
+					},
+					statData: {
+						type: String,
+						value: ""
+					},
+					name: {
+						type: String,
+						value: ""
+					},
+					user: {
+						type: String,
+						value: ""
+					},
+					system: {
+						type: String,
+						value: ""
+					},
+					idle: {
+						type: String,
+						value: ""
+					},
+					wait: {
+						type: String,
+						value: ""
+					},
+					steal: {
+						type: String,
+						value: ""
+					},
+					guest: {
+						type: String,
+						value: ""
+					},
+					_lastData: {
+						type: Array,
+						value: []
+					},
+					_graphData: {
+						type: Array,
+						value: [["Type", "Utilization"],
+							["User", 0],
+							["System", 0],
+							["Other VM", 0],
+							["Idle", 100]]
+					},
+					_init: {
+						type: Boolean,
+						value: false
+					},
+				},
+
+				ready: function() {
+					console.log("Ready");
+					this._initGraph();
+					this.startProbe();
+				},
+
+				startProbe: function() {
+					this.timerId = setInterval(this.doProbe, this.interval, this);
+				},
+
+				stopProbe: function() {
+					clearInterval(this.timerId);
+				},
+
+				doProbe: function(that) {
+					that.$.messageCenter.sendRequest('cpuload#Get', {})
+					.then((msg) => {
+						that.timeStamp = msg.stamp;
+						that.statData = msg.line;
+						that.parseStat(that, msg.line);
+					})
+					.catch((msg) => {
+						console.error(msg);
+						that.stopProbe();
+					});
+				},
+
+				parseStat: function(that, line) {
+					const token = line.split(/\s+/);
+					const value = [];
+					const sum = [];
+					const delta = [];
+					const util = [];
+
+					value[0] = 0;
+					for (let i = 1; i < 10; i++) {
+						value[i] = parseInt(token[i]);
+						if (isNaN(value[i])) {
+							console.error('Parse Error at token[' + i + ']: "' + token[i] + '"')
+							value[i] = 0;
+						}
+					}
+					sum[0] = value[1] + value[2];
+					sum[1] = value[3];
+					sum[2] = value[4];
+					sum[3] = value[5] + value[6] + value[7];
+					sum[4] = value[8];
+					sum[5] = value[9];
+
+					if (that._init) {
+						let all = 0;
+						let graph = [];
+
+						for (let i = 0; i < 6; i++) {
+							delta[i] = sum[i] - that._lastData[i];
+							that._lastData[i] = sum[i];
+							all = all + delta[i];
+						}
+						for (let i = 0; i < 6; i++) {
+							util[i] = delta[i] * 100 / all;
+						}
+						that.user = util[0].toFixed(2);
+						that.system = util[1].toFixed(2);
+						that.idle = util[2].toFixed(2);
+						that.wait = util[3].toFixed(2);
+						that.steal = util[4].toFixed(2);
+						that.guest = util[5].toFixed(2);
+
+						graph = [["Type", "Utilization"],
+							 ["User", (delta[0])],
+							 ["System", (delta[1] + delta[3] + delta[5])],
+							 ["Other VM", (delta[4])],
+							 ["Idle", (delta[2])]];
+						that._graphData = graph;
+					}
+					else {
+						for (let i = 0; i < 6; i++) {
+							that._lastData[i] = sum[i];
+						}
+						that._init = true;
+					}
+				},
+
+				_initGraph: function() {
+				}
+			});
+		})();
+	</script>
+</dom-module>
