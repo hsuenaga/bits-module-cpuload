@@ -145,8 +145,11 @@
 						value: [["Type", "Utilization"],
 							["User", 0],
 							["System", 0],
+							["Idle", 100],
+							["Wait", 0],
 							["Other VM", 0],
-							["Idle", 100]]
+							["Guest VM", 0],
+						       ]
 					},
 					_init: {
 						type: Boolean,
@@ -185,8 +188,6 @@
 					const token = line.split(/\s+/);
 					const value = [];
 					const sum = [];
-					const delta = [];
-					const util = [];
 
 					value[0] = 0;
 					for (let i = 1; i < 10; i++) {
@@ -206,6 +207,8 @@
 					if (that._init) {
 						let all = 0;
 						let graph = [];
+						let delta = [];
+						let util = [];
 
 						for (let i = 0; i < 6; i++) {
 							delta[i] = sum[i] - that._lastData[i];
@@ -222,11 +225,14 @@
 						that.steal = util[4].toFixed(2);
 						that.guest = util[5].toFixed(2);
 
-						graph = [["Type", "Utilization"],
-							 ["User", (delta[0])],
-							 ["System", (delta[1] + delta[3] + delta[5])],
+						graph = [["Type",  "Utilization"],
+							 ["User",     (delta[0])],
+							 ["System",   (delta[1])],
+							 ["Idle",     (delta[2])],
+							 ["Wait",     (delta[3])],
 							 ["Other VM", (delta[4])],
-							 ["Idle", (delta[2])]];
+							 ["Guest VM", (delta[5])]
+							];
 						that._graphData = graph;
 					}
 					else {
