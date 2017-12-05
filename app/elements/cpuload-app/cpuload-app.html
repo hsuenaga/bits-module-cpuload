@@ -2,6 +2,7 @@
 // Client side
 //
 <link rel="import" href="../../bower_components/polymer/polymer.html">
+<link rel="import" href="../../bower_components/google-chart/google-chart-loader.html">
 <link rel="import" href="../../bower_components/google-chart/google-chart.html">
 <link rel="import" href="../base-message-center/base-message-center.html">
 
@@ -14,13 +15,17 @@
 				display: block;
 			}
 
-			.value {
-				text-align: right;
-			}
-
 			thead tr td {
 				border: 1px solid grey;
 				background: LightGrey;
+			}
+
+			#t_chart {
+				display: block;
+			}
+
+			#p_chart {
+				display: block;
 			}
 		</style>
 
@@ -30,54 +35,10 @@
 			<h1>CPU Load</h1>
 			<p>TimeStamp: [[timeStamp]]</p>
 			<p>Status: [[statData]]</p>
-			<table>
-				<thead>
-					<tr>
-						<td>Type</td>
-						<td>Value [%]</td>
-						<td>Description</td>
-					</tr>
-				</thead>
-				<tbody>
-					<tr>
-						<td>User</td>
-						<td class="value">[[user]]</td>
-						<td>User Process</td>
-					</tr>
-					<tr>
-						<td>System</td>
-						<td class="value">[[system]]</td>
-						<td>System Process</td>
-					</tr>
-					<tr>
-						<td>Idle</td>
-						<td class="value">[[idle]]</td>
-						<td>Idle Process</td>
-					</tr>
-					<tr>
-						<td>Wait</td>
-						<td class="value">[[wait]]</td>
-						<td>I/O and IRQ wait.</td>
-					</tr>
-					<tr>
-						<td>Steal</td>
-						<td class="value">[[steal]]</td>
-						<td>Other Virtual Machines(s) on same host</td>
-					</tr>
-					<tr>
-						<td>Guest</td>
-						<td class="value">[[guest]]</td>
-						<td>Guest Virtual Machines(s) on this host</td>
-					</tr>
-				</tbody>
-			</table>
 
-			<google-chart
-				type='pie'
-				options='{"title": "CPU Utilization"}'
-				data='[[_graphData]]'
-			</google-chart>
-
+			<google-chart-loader id="googleLoader"></google-chart-loader>
+			<google-chart id="t_chart" type='table' options='[[_options]]' data='[[_dataTable]]'> </google-chart>
+			<google-chart id="p_chart" type='pie' options='[[_options]]' view='[[_dataView]]'> </google-chart>
 		</div>
 	</template>
 
@@ -88,69 +49,42 @@
 			Polymer({
 				is: 'cpuload-app',
 
-				publish: {
-				},
-
 				properties: {
+					_options: {
+						type: Object,
+						value: {
+							'title': 'CPU Utilization'
+						}
+					},
+
+					_dataTable: {
+						type: Object
+					},
+
+					_dataView: {
+						type: Object
+					},
+
 					timerId: {
 						type: Number,
 						value: undefined
 					},
+
 					timeStamp: {
 						type: String,
 						value: ""
 					},
+
 					interval: {
 						type: Number,
 						value: 1000
 					},
+
 					statData: {
 						type: String,
 						value: ""
 					},
-					name: {
-						type: String,
-						value: ""
-					},
-					user: {
-						type: String,
-						value: ""
-					},
-					system: {
-						type: String,
-						value: ""
-					},
-					idle: {
-						type: String,
-						value: ""
-					},
-					wait: {
-						type: String,
-						value: ""
-					},
-					steal: {
-						type: String,
-						value: ""
-					},
-					guest: {
-						type: String,
-						value: ""
-					},
-					_lastData: {
-						type: Array,
-						value: []
-					},
-					_graphData: {
-						type: Array,
-						value: [["Type", "Utilization"],
-							["User", 0],
-							["System", 0],
-							["Idle", 100],
-							["Wait", 0],
-							["Other VM", 0],
-							["Guest VM", 0],
-						       ]
-					},
+
 					_init: {
 						type: Boolean,
 						value: false
@@ -159,91 +93,139 @@
 
 				ready: function() {
 					console.log("Ready");
-					this._initGraph();
-					this.startProbe();
+					this._initTable();
+					this._startProbe();
 				},
 
-				startProbe: function() {
-					this.timerId = setInterval(this.doProbe, this.interval, this);
+				_startProbe: function() {
+					this.timerId = setInterval(this._doProbe.bind(this), this.interval);
 				},
 
-				stopProbe: function() {
+				_stopProbe: function() {
 					clearInterval(this.timerId);
 				},
 
-				doProbe: function(that) {
-					that.$.messageCenter.sendRequest('cpuload#Get', {})
-					.then((msg) => {
-						that.timeStamp = msg.stamp;
-						that.statData = msg.line;
-						that.parseStat(that, msg.line);
+				_doProbe: function() {
+					let msg;
+
+					this.$.messageCenter.sendRequest('cpuload#Get', {})
+					.then((m) => {
+						msg = m;
+						this.timeStamp = msg.stamp;
+						this.statData = msg.line;
+
+						this._updateTable(msg.line);
+					})
+					.then(() => {
+						const dv = this._dataView;
+
+						/* XXX: force propagate table change */
+						dv.hideColumns([1, 2, 3]);
+						this.$.t_chart.redraw();
+						this.$.p_chart.redraw();
+
+						if (!this._init)
+							this._init = true;
 					})
 					.catch((msg) => {
 						console.error(msg);
-						that.stopProbe();
+						this._stopProbe();
 					});
 				},
 
-				parseStat: function(that, line) {
+				_initTable: function() {
+					const loader = this.$.googleLoader;
+
+					return loader.dataTable()
+					.then((dt) => {
+						this._dataTable = dt;
+
+						dt.addColumn('string', 'Type');
+						dt.addColumn('string', 'Description');
+						dt.addColumn('number', 'Current');
+						dt.addColumn('number', 'Last');
+
+						dt.addRow(['User', 'User Process', 0, 0]);
+						dt.addRow(['System', 'System Process', 0, 0]);
+						dt.addRow(['Idle', 'Idle', 0, 0]);
+						dt.addRow(['I/O', 'I/O and IRQ Wait', 0, 0]);
+						dt.addRow(['Steal', 'Other Virtual Machine(s) on same host', 0, 0]);
+						dt.addRow(['Guest', 'Guest Virtual Machine(s)', 0, 0]);
+					})
+					.then(() => {
+						return loader.dataView(this._dataTable);
+					})
+					.then((dv) => {
+						dv.setColumns([0, 1, 2, 3, {calc:delta.bind(this), type:'number', label:'Ticks'}]);
+						dv.hideColumns([1, 2, 3]);
+						this._dataView = dv;
+					});
+
+					function delta(dt, row) {
+						const cur = dt.getValue(row, 2);
+						const last = dt.getValue(row, 3);
+
+						return this._init ? (cur - last) : 0;
+					}
+				},
+
+				_updateTable: function(line) {
+					const dt = this._dataTable;
 					const token = line.split(/\s+/);
 					const value = [];
-					const sum = [];
 
+					// parse tokens:
+					//
+					// <0:cpu#> <1:user> <2:nice> <3:system> <4:idle> <5:iowait>
+					//       <6:irq> <7:softirq> <8:steal> <9:guest> <10:guest_nice>
 					value[0] = 0;
-					for (let i = 1; i < 10; i++) {
+					for (let i = 1; i <= 10; i++) {
 						value[i] = parseInt(token[i]);
 						if (isNaN(value[i])) {
 							console.error('Parse Error at token[' + i + ']: "' + token[i] + '"')
 							value[i] = 0;
 						}
 					}
-					sum[0] = value[1] + value[2];
-					sum[1] = value[3];
-					sum[2] = value[4];
-					sum[3] = value[5] + value[6] + value[7];
-					sum[4] = value[8];
-					sum[5] = value[9];
 
-					if (that._init) {
-						let all = 0;
-						let graph = [];
-						let delta = [];
-						let util = [];
+					//
+					// update DataTable
+					//
+					for (let row = 0; row < dt.getNumberOfRows(); row++) {
+						let nVal, oVal;
 
-						for (let i = 0; i < 6; i++) {
-							delta[i] = sum[i] - that._lastData[i];
-							that._lastData[i] = sum[i];
-							all = all + delta[i];
+						// Table: Type, Description, Current, Last
+						//
+						// (1) move current value(col 2) to last value(col 3)
+						oVal = dt.getValue(row, 2);
+						dt.setValue(row, 3, oVal);
+
+						// (2) update current value
+						switch (row) {
+						case 0: // user + nice
+							nVal = value[1] + value[2];
+							break;
+						case 1:// system
+							nVal = value[3];
+							break;
+						case 2: // idle
+							nVal = value[4];
+							break;
+						case 3: // iowait + irq + softirq
+							nVal = value[5] + value[6] + value[7];
+							break;
+						case 4: // steal
+							nVal = value[8];
+							break;
+						case 5: // iowait + irq + softirq
+							nVal = value[9] + value[10];
+							break;
+						default:
+							throw new Error("Unknown Row in DataTable");
 						}
-						for (let i = 0; i < 6; i++) {
-							util[i] = delta[i] * 100 / all;
-						}
-						that.user = util[0].toFixed(2);
-						that.system = util[1].toFixed(2);
-						that.idle = util[2].toFixed(2);
-						that.wait = util[3].toFixed(2);
-						that.steal = util[4].toFixed(2);
-						that.guest = util[5].toFixed(2);
-
-						graph = [["Type",  "Utilization"],
-							 ["User",     (delta[0])],
-							 ["System",   (delta[1])],
-							 ["Idle",     (delta[2])],
-							 ["Wait",     (delta[3])],
-							 ["Other VM", (delta[4])],
-							 ["Guest VM", (delta[5])]
-							];
-						that._graphData = graph;
+						dt.setValue(row, 2, nVal);
 					}
-					else {
-						for (let i = 0; i < 6; i++) {
-							that._lastData[i] = sum[i];
-						}
-						that._init = true;
-					}
-				},
 
-				_initGraph: function() {
+					return;
 				}
 			});
 		})();
